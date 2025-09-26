@@ -1,0 +1,31 @@
+{
+  "symbols": [
+    "IXHL",
+    "BMBL",
+    "VALE",
+    "VTRS",
+    "NVST"
+  ],
+  "custom_tick_ms": 6900,
+  "sustain_required_after_turn": 2,
+  "stop_loss_proportion_below": 0.99,
+  "take_profit_proportion_above": 1.01,
+  "trailing_stop_proportion_below": 0.99,
+  "maximum_price_per_buy": 100.0,
+  "maximum_share_price": 50.0,
+  "maximum_buy_during_run": 10000.0,
+  "minimum_time_to_revisit": 10.0,
+  "maximum_seconds_to_run": 6000000,
+  "trader_cooldown_tick_duration": 1,
+  "simulate_live_market": true,
+  "api_base_url": "https://data.alpaca.markets/v2/",
+  "regular_market_hours_start": "13:30:00.000Z",
+  "regular_market_hours_end": "20:00:00.000Z",
+  "daily_active_time_start": "13:35:00.000Z",
+  "daily_active_time_end": "19:50:00.000Z",
+  "backtest_time_start": "2025-07-28T13:30:00.000Z",
+  "backtest_time_end": "2025-07-29T21:00:00.000Z",
+  "price_aggregator_time_start": "2025-07-28T13:30:00.000Z",
+  "price_aggregator_time_end": "2025-08-04T13:30:00.000Z",
+  "price_aggregator_history_days": 20
+}
