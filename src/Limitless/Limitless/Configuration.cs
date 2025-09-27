@@ -1,16 +1,16 @@
 ﻿namespace Limitless
 {
-    internal class Configuration
+    public class Configuration
     {
         public int CustomTickMs { get; set; }
         public int SustainRequiredAfterTurn { get; set; }
-        public double StopLossProportionBelow { get; set; }
-        public double TakeProfitProportionAbove { get; set; }
-        public double TrailingStopProportionBelow { get; set; }
-        public double MaximumPricePerBuy { get; set; }
-        public double MaximumSharePrice { get; set; }
-        public double MaximumBuyDuringRun { get; set; }
-        public double MinimumTimeToRevisit { get; set; }
+        public decimal StopLossProportionBelow { get; set; }
+        public decimal TakeProfitProportionAbove { get; set; }
+        public decimal TrailingStopProportionBelow { get; set; }
+        public decimal MaximumPricePerBuy { get; set; }
+        public decimal MaximumSharePrice { get; set; }
+        public decimal MaximumBuyDuringRun { get; set; }
+        public decimal MinimumTimeToRevisit { get; set; }
         public int MaximumSecondsToRun { get; set; }
         public int TraderCooldownTickDuration { get; set; }
         public bool SimulateLiveMarket { get; set; }

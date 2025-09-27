@@ -4,15 +4,23 @@ namespace Limitless
 {
     internal class ConfigurationLoader
     {
-        internal async Task<Configuration?> TryLoad(string path)
+        internal T? TryLoadJSON<T>(string path)
+            where T : class
         {
-            string json = string.Empty;
-            using (StreamReader r = new StreamReader(path))
+            try
             {
-                json = r.ReadToEnd();
-            }
+                string json = string.Empty;
+                using (StreamReader r = new StreamReader(path))
+                {
+                    json = r.ReadToEnd();
+                }
 
-            return JsonConvert.DeserializeObject<Configuration>(json);
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }
