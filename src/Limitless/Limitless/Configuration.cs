@@ -2,6 +2,7 @@
 {
     public class Configuration
     {
+        public List<string> Symbols { get; set; } = new List<string>();
         public int CustomTickMs { get; set; }
         public int SustainRequiredAfterTurn { get; set; }
         public decimal StopLossProportionBelow { get; set; }

@@ -5,8 +5,12 @@ namespace Limitless
     internal class TradeController
     {
         private Secrets secrets;
+        internal IEnvironment CurrentEnvironment = Environments.Paper;
         internal Configuration Config { get; private set; }
         internal IAlpacaTradingClient? TradingClient { get; private set; }
+        internal IAlpacaDataClient? DataClient { get; private set; }
+        internal IMarketBehavior? MarketBehavior { get; private set; }
+        internal PriceAggregator PriceAggregate { get; private set; }
 
         public TradeController(Configuration configuration, Secrets secret)
         {
@@ -16,26 +20,29 @@ namespace Limitless
 
         internal async Task Run()
         {
-            if (Config.SimulateLiveMarket)
+            if (!Config.SimulateLiveMarket)
             {
-                TradingClient = Environments.Paper.GetAlpacaTradingClient(new SecretKey(secrets.Key, secrets.Secret));
+                CurrentEnvironment = Environments.Live;
             }
-            else
-            {
-                TradingClient = Environments.Live.GetAlpacaTradingClient(new SecretKey(secrets.Key, secrets.Secret));
-            }
+
+            var secretKey = new SecretKey(secrets.Key, secrets.Secret);
+
+            TradingClient = CurrentEnvironment.GetAlpacaTradingClient(secretKey);
+            DataClient = CurrentEnvironment.GetAlpacaDataClient(secretKey);
+            MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
+            PriceAggregate = new PriceAggregator(Config, DataClient);
+
+            await PriceAggregate.LoadBarsAsync(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd);
 
             // Just testing a buy and sell for now
 
-            IMarketBehavior marketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
-
-            var buyOrder = await marketBehavior.Buy("TSLA", 1, DateTime.Now, 800.0M);
+            var buyOrder = await MarketBehavior.Buy("TSLA", 1, DateTime.Now, 800.0M);
 
             await Task.Delay(3000);
 
-            var filledOrder = await marketBehavior.GetOrder(buyOrder);
+            var filledOrder = await MarketBehavior.GetOrder(buyOrder);
 
-            var sellOrder = await marketBehavior.Sell("TSLA", 1, DateTime.Now, (decimal)filledOrder.AverageFillPrice);
+            var sellOrder = await MarketBehavior.Sell("TSLA", 1, DateTime.Now, (decimal)filledOrder.AverageFillPrice);
         }
     }
 }
