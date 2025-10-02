@@ -24,7 +24,7 @@ namespace Limitless
 
         public DateTime? ReplacedAtUtc { get; set; } = null;
 
-        public Guid AssetId { get; set; } = Guid.NewGuid(); // Dummy ID
+        public Guid AssetId { get; set; } = Guid.NewGuid(); // Fake ID
 
         public string Symbol { get; set; } = string.Empty;
 

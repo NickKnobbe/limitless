@@ -1,7 +1,6 @@
 ﻿using Alpaca.Markets;
-using Limitless;
 
-namespace TradingApp
+namespace Limitless 
 {
     public enum TraderState
     {
@@ -13,7 +12,8 @@ namespace TradingApp
         Closing = 5,
         Closed = 6,
         Retired = 7,
-        Error = 8
+        Error = 8,
+        WaitingForEvent = 9
     }
 
     public class Trader
@@ -31,10 +31,13 @@ namespace TradingApp
         protected IQuote? _quoteOnPreviousTick;
         protected PriceAggregator _priceAggregator;
 
-        protected int _quantityHeld = 0;
+        protected decimal _quantityHeld = 0.0M;
         protected int _cooldownCountdown = 0;
         protected IOrder? _orderBeingConfirmed;
         protected decimal _estimatedHeldValue = 0.0M;
+        protected decimal _previousBuySharePrice = 0.0M;
+        protected decimal _activeStopLossPerSharePrice = 0.0M;
+        protected decimal _activeTakeProfitPerSharePrice = 0.0M;
         protected decimal _estimatedPAndLDelta = 0.0M;
         protected decimal _allSoldAmounts = 0.0M;
         protected decimal _allBoughtAmounts = 0.0M;
@@ -78,18 +81,27 @@ namespace TradingApp
 
         public virtual async Task ProcessTick(DateTime currentTime)
         {
-
+            _currentTime = currentTime;
         }
 
         public virtual async Task ActionTick(DateTime currentTime)
         {
-            
+            _currentTime = currentTime;
         }
 
-        public virtual void Cooldown()
+        public virtual void PostSellActions()
         {
             State = TraderState.Cooldown;
             _cooldownCountdown = _launchSettings.TraderCooldownTickDuration;
+        }
+
+        protected virtual void CooldownCycleActions()
+        {
+            --_cooldownCountdown;
+            if (_cooldownCountdown == 0)
+            {
+                State = TraderState.WaitingToBuy;
+            }
         }
 
         public virtual decimal CalculatePAndL()
@@ -117,7 +129,7 @@ namespace TradingApp
                 return;
             }
 
-            _previousBar = bar;
+            _previousBar = _mostRecentBar;
             _mostRecentBar = bar;
         }
 
@@ -165,9 +177,70 @@ namespace TradingApp
             }
         }
 
-        public virtual void OrderFilledConfirmation(TraderState traderState, dynamic updatedOrder)
+        public virtual async Task ConfirmOrder(TraderState traderState, IOrder order)
         {
-            // Implement in derived classes
+            var updatedOrder = await _marketBehavior.GetOrder(order);
+            if (updatedOrder != null && updatedOrder.OrderStatus == OrderStatus.Filled)
+            {
+                OrderFilledConfirmation(State, updatedOrder);
+            }
+        }
+
+        public virtual void OrderFilledConfirmation(TraderState traderState, IOrder updatedOrder)
+        {
+            if (updatedOrder?.AverageFillPrice == null) return;
+
+            if (updatedOrder.OrderSide == OrderSide.Buy)
+            {
+                var priceBought = (decimal)updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity;
+                _previousBuySharePrice = (decimal)updatedOrder.AverageFillPrice;
+                _quantityHeld += updatedOrder.FilledQuantity;
+                _estimatedHeldValue += priceBought;
+                _allBoughtAmounts += priceBought;
+                _activeStopLossPerSharePrice = priceBought * _launchSettings.StopLossProportion;
+                _activeTakeProfitPerSharePrice = priceBought * _launchSettings.TakeProfitProportion;
+                Console.WriteLine($"{_currentTime} Bought {Symbol} @ {updatedOrder.AverageFillPrice} * {updatedOrder.FilledQuantity} = {priceBought}, P&L {CalculatePAndL()}");
+                State = TraderState.Holding;
+            }
+            else if (updatedOrder.OrderSide == OrderSide.Sell)
+            {
+                var priceSold = (decimal)updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity;
+                _allSoldAmounts += (decimal)(updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity);
+                _quantityHeld = 0;
+                _estimatedHeldValue = 0.0M;
+                Console.WriteLine($"{_currentTime} Sold {Symbol} @ {updatedOrder.AverageFillPrice} * {updatedOrder.FilledQuantity} = {priceSold}, P&L {CalculatePAndL()}");
+                PostSellActions();
+            }
+        }
+
+        public virtual decimal GetEstimatedPrice(string symbol)
+        {
+            if (_mostRecentQuote == null)
+            {
+                if (_mostRecentBar == null)
+                {
+                    return 0.0M;
+                }
+                return _mostRecentBar.Close;
+            }
+            return _mostRecentQuote.AskPrice;
+        }
+
+        public virtual decimal GetHighestQuantityBuyAllowed(string symbol, decimal buyLimit)
+        {
+            if (_mostRecentQuote == null)
+            {
+                return 0.0M;
+            }
+
+            var qty = buyLimit / _mostRecentQuote.AskPrice;
+
+            return Math.Floor(qty);
+        }
+
+        public string GetSummary()
+        {
+            return $"{_currentTime} Trader for {Symbol} is holding {_quantityHeld} shares worth an estimated {_estimatedHeldValue}. Trader P&L: {CalculatePAndL()}";
         }
     }
 }

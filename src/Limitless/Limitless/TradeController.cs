@@ -1,5 +1,6 @@
 ﻿using Alpaca.Markets;
-using TradingApp;
+using System.Diagnostics;
+using System.Text;
 
 namespace Limitless
 {
@@ -17,12 +18,16 @@ namespace Limitless
         internal TimeSpan TimePerAction { get; private set; }
         internal DateTime EndRunTime { get; private set; }
         internal List<Trader> Traders { get; private set; }
+        internal int ActionTicksSinceStart { get; private set; }
+        internal int ActionTicksSinceSummary { get; private set; }
 
         public TradeController(Configuration configuration, Secrets secret)
         {
             Config = configuration;
             secrets = secret;
             Traders = new List<Trader>();
+            ActionTicksSinceStart = 0;
+            ActionTicksSinceSummary = 0;
         }
 
         internal async Task Run()
@@ -42,30 +47,30 @@ namespace Limitless
             if (Config.SimulateLiveMarket)
             {
                 PerceivedCurrentTime = Config.BacktestTimeStart;
-                await PriceAggregate.LoadBarsAsync(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd);
+                Console.WriteLine("Retrieving bar history data...");
+                await PriceAggregate.LoadStoreBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
+                Console.WriteLine("Retrieving quote history data...");
+                await PriceAggregate.LoadStoreFakeQuotes(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 MarketBehavior = new MarketBehaviorBacktest(Config);
             }
             else
             {
+                Console.WriteLine("Retrieving bar history data...");
                 PerceivedCurrentTime = DateTime.UtcNow;
-                await PriceAggregate.LoadBarsAsync(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime);
+                await PriceAggregate.LoadStoreBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
+                Console.WriteLine("Retrieving quote history data...");
+                await PriceAggregate.LoadStoreFakeQuotes(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
             }
 
+            Console.WriteLine("Data retrieval complete.");
+
             foreach (var symbol in Config.Symbols)
             {
-                Traders.Add(new Trader(this, Config, PriceAggregate, symbol, MarketBehavior));
+                Traders.Add(new SMACrossingTrader(this, Config, PriceAggregate, symbol, MarketBehavior));
             }
 
             await ProcessLoop();
-
-            // Just testing a buy and sell for now
-
-            //var buyOrder = await MarketBehavior.Buy("TSLA", 1, DateTime.Now, 800.0M);
-
-            //var filledOrder = await MarketBehavior.GetOrder(buyOrder);
-
-            //var sellOrder = await MarketBehavior.Sell("TSLA", 1, DateTime.Now, (decimal)filledOrder.AverageFillPrice);
         }
 
         internal async Task ProcessLoop()
@@ -79,34 +84,72 @@ namespace Limitless
                 EndRunTime = Config.RunTimeEnd;
             }
 
+            var summarySb = new StringBuilder();
+
             while (PerceivedCurrentTime < EndRunTime)
             {
                 if (Config.SimulateLiveMarket)
                 {
-                    PerceivedCurrentTime = PerceivedCurrentTime + new TimeSpan(0, 0, 0, 0, 250);
+                    PerceivedCurrentTime += new TimeSpan(0, 0, 0, 0, 250);
                 }
                 else
                 {
                     PerceivedCurrentTime = DateTime.Now;
                 }
 
-                for (int i = 0; i < Traders.Count; ++i)
+                foreach (var trader in Traders)
                 {
-                    var trader = Traders[i];
-                    var _mostRecentBar = PriceAggregate.GetLatestBar(trader.Symbol, PerceivedCurrentTime);
-                    trader.UpdateMostRecentBar(_mostRecentBar);
-
                     await trader.ProcessTick(PerceivedCurrentTime);
                 }
 
                 if (PerceivedCurrentTime - PreviousActionTime > TimePerAction)
                 {
+                    // todo : Make traders close if the position is stagnant
+                    UpdateTraderQuotes();
+
+                    // todo : Update live quotes and determine if history request quotes are recent enough to 
+                    // give a live run data as it progresses
+
                     PreviousActionTime = PerceivedCurrentTime;
-                    for (int i = 0; i < Traders.Count; ++i)
+                    foreach (var trader in Traders)
                     {
-                        var trader = Traders[i];
                         await trader.ActionTick(PerceivedCurrentTime);
                     }
+
+                    ++ActionTicksSinceStart;
+                    ++ActionTicksSinceSummary;
+
+                    if (ActionTicksSinceSummary >= Config.TraderSummaryPrintInterval)
+                    {
+                        summarySb.AppendLine($"Summary at action {ActionTicksSinceStart}:");
+                        foreach (var trader in Traders)
+                        {
+                            summarySb.AppendLine(trader.GetSummary());
+                        }
+                        Console.WriteLine(summarySb.ToString());
+                        ActionTicksSinceSummary = 0;
+                        summarySb.Clear();
+                    }
+                }
+            }
+        }
+
+        internal void UpdateTraderQuotes()
+        {
+            for (int i = 0; i < Traders.Count; ++i)
+            {
+                var trader = Traders[i];
+                var mostRecentBar = PriceAggregate.GetLatestBarBefore(trader.Symbol, PerceivedCurrentTime);
+                var mostRecentQuote = PriceAggregate.GetLatestQuoteBefore(trader.Symbol, PerceivedCurrentTime);
+
+                if (mostRecentBar != null)
+                {
+                    trader.UpdateMostRecentBar(mostRecentBar);
+                }
+
+                if (mostRecentQuote != null)
+                {
+                    trader.UpdateMostRecentQuote(mostRecentQuote);
                 }
             }
         }

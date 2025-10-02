@@ -13,7 +13,7 @@ namespace Limitless
             this.orderIdToOrder = new Dictionary<Guid, IOrder>();
         }
 
-        public async Task<IOrder?> Buy(string symbol, int quantity, DateTime timestamp, decimal estimatedPrice)
+        public async Task<IOrder?> Buy(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
         {
             if (estimatedPrice <= 0.0M)
             {
@@ -44,7 +44,7 @@ namespace Limitless
                 return null;
             }
 
-            var marketOrderRequest = new NewOrderRequest(symbol, quantity, OrderSide.Buy, OrderType.Market, TimeInForce.Day);
+            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Buy, OrderType.Market, TimeInForce.Day);
 
             var marketOrder = new SimulatedOrder(
                 id: Guid.NewGuid(),
@@ -58,16 +58,16 @@ namespace Limitless
 
             orderIdToOrder[marketOrder.OrderId] = marketOrder;
 
-            Console.WriteLine($"{timestamp} {symbol} Buy submitted for {quantity} shares at an estimated {quantity} * {estimatedPrice} = {totalPrice}.");
+           // Console.WriteLine($"{timestamp} {symbol} Buy submitted for {quantity} shares at an estimated {quantity} * {estimatedPrice} = {totalPrice}.");
 
             return marketOrder;
         }
 
-        public async Task<IOrder?> Sell(string symbol, int quantity, DateTime timestamp, decimal estimatedPrice)
+        public async Task<IOrder?> Sell(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
         {
             decimal price = quantity * estimatedPrice;
 
-            var marketOrderRequest = new NewOrderRequest(symbol, quantity, OrderSide.Sell, OrderType.Market, TimeInForce.Day);
+            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Sell, OrderType.Market, TimeInForce.Day);
 
             var marketOrder = new SimulatedOrder(
                 id: Guid.NewGuid(),
@@ -81,7 +81,7 @@ namespace Limitless
 
             orderIdToOrder[marketOrder.OrderId] = marketOrder;
 
-            Console.WriteLine($"{timestamp} {symbol} Sell submitted for an estimated {quantity} * {estimatedPrice} = {price}.");
+            //Console.WriteLine($"{timestamp} {symbol} Sell submitted for an estimated {quantity} * {estimatedPrice} = {price}.");
 
             return marketOrder;
         }

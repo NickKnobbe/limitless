@@ -13,7 +13,7 @@ namespace Limitless
             this.tradingClient = tradingClient;
         }
 
-        public async Task<IOrder?> Buy(string symbol, int quantity, DateTime timestamp, decimal estimatedPrice)
+        public async Task<IOrder?> Buy(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
         {
             if (estimatedPrice <= 0.0M)
             {
@@ -44,7 +44,7 @@ namespace Limitless
                 return null;
             }
 
-            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64(quantity), OrderSide.Buy, OrderType.Market, TimeInForce.Day);
+            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Buy, OrderType.Market, TimeInForce.Day);
 
             var marketOrder = await tradingClient.PostOrderAsync(marketOrderRequest);
 
@@ -53,9 +53,9 @@ namespace Limitless
             return marketOrder;
         }
 
-        public async Task<IOrder?> Sell(string symbol, int quantity, DateTime timestamp, decimal estimatedPrice)
+        public async Task<IOrder?> Sell(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
         {
-            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64(quantity), OrderSide.Sell, OrderType.Market, TimeInForce.Day);
+            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Sell, OrderType.Market, TimeInForce.Day);
 
             decimal price = quantity * estimatedPrice;
 

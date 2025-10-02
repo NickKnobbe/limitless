@@ -1,15 +1,12 @@
 {
   "Symbols": [
-    "IXHL",
-    "BMBL",
-    "VALE",
-    "VTRS",
-    "NVST"
+    "TSLA"
   ],
+  "FocusedIndexSymbol": "SPY",
   "ActionTickMs": 69000,
   "SustainRequiredAfterTurn": 2,
-  "StopLossProportionBelow": 0.99,
-  "TakeProfitProportionAbove": 1.02,
+  "StopLossProportion": 0.99,
+  "TakeProfitProportion": 1.02,
   "TrailingStopProportionBelow": 0.99,
   "MaximumPricePerBuy": 1000.0,
   "MaximumSharePrice": 1000.0,
@@ -17,6 +14,8 @@
   "MinimumTimeToRevisit": 10.0,
   "TraderCooldownTickDuration": 1,
   "SimulateLiveMarket": true,
+  "SubscribeBars": false,
+  "SubscribeQuotes": true,
   "ApiBaseUrl": "https://data.alpaca.markets/v2/",
   "RegularMarketHoursStart": "13:30:00.000",
   "RegularMarketHoursEnd": "20:00:00.000",
@@ -27,5 +26,6 @@
   "PriceAggregatorTimeStart": "2025-07-28T13:30:00.000Z",
   "PriceAggregatorTimeEnd": "2025-08-04T21:00:00.000Z",
   "PriceAggregatorHistoryDays": 20,
-  "RunTimeEnd": "2025-09-30T21:00.000Z"
+  "RunTimeEnd": "2025-09-29T21:00:00.000Z",
+  "TraderSummaryPrintInterval": "50"
 }

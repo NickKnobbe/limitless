@@ -1,5 +1,4 @@
 ﻿using Alpaca.Markets;
-using TradingApp;
 
 namespace Limitless
 {
@@ -28,24 +27,7 @@ namespace Limitless
         {
         }
 
-        public override void OrderFilledConfirmation(TraderState traderState, dynamic updatedOrder)
-        {
-            if (updatedOrder == null) return;
 
-            if (updatedOrder.OrderSide == OrderSide.Buy)
-            {
-                _quantityHeld = updatedOrder.Quantity;
-                _allBoughtAmounts += updatedOrder.FilledAvgPrice * updatedOrder.Quantity;
-                Console.WriteLine($"{_currentTime} Bought {_quantityHeld} {Symbol} @ {updatedOrder.FilledAvgPrice}");
-            }
-            else if (updatedOrder.OrderSide == OrderSide.Sell)
-            {
-                _allSoldAmounts += updatedOrder.FilledAvgPrice * updatedOrder.Quantity;
-                Console.WriteLine($"{_currentTime} Sold {_quantityHeld} {Symbol} @ {updatedOrder.FilledAvgPrice}");
-                _quantityHeld = 0;
-                _estimatedHeldValue = 0;
-            }
-        }
 
         private bool IsBullishInvertedHammer(IBar bar)
         {
