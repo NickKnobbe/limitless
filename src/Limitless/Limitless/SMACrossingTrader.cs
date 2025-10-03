@@ -5,7 +5,7 @@ namespace Limitless
     internal class SMACrossingTrader : Trader
     {
         // Enter when price breaks above X-day SMA, and watch for a bullish MACD crossover. 
-        private const int SMA_DAYS = 10;
+        private const int SMA_DAYS = 20;
 
         public SMACrossingTrader(
             TradeController owner,
@@ -57,6 +57,12 @@ namespace Limitless
 
         public override async Task ActionTick(DateTime currentTime)
         {
+            if (GoDormantCondition() && State != TraderState.Dormant && State != TraderState.Closing && State != TraderState.Closed)
+            {
+                await GoDormant();
+                return;
+            }
+
             switch (State)
             {
                 case TraderState.None:
@@ -122,17 +128,19 @@ namespace Limitless
                     }
                 case TraderState.Closing:
                     {
-                        if (_orderBeingConfirmed == null)
+                        if (_orderBeingConfirmed == null || _activeAttemptsToFullyClose >= _launchSettings.TraderAttemptsToFullyClose)
                         {
                             State = TraderState.Closed;
+                            _activeAttemptsToFullyClose = 0;
                         }
-                        else
+                        else                         
                         {
                             var order = await _marketBehavior.GetOrder(_orderBeingConfirmed);
                             if (order != null && order.OrderStatus == OrderStatus.Filled)
                             {
                                 await ConfirmOrder(State, order);
                             }
+                            ++_activeAttemptsToFullyClose;
                         }
                     }
                     break;

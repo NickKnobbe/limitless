@@ -2,7 +2,8 @@
   "Symbols": [
     "TSLA",
     "AAPL",
-    "SPY"
+    "SPY",
+    "BBW"
   ],
   "FocusedIndexSymbol": "SPY",
   "ActionTickMs": 6900,
@@ -29,5 +30,6 @@
   "PriceAggregatorTimeEnd": "2025-08-04T21:00:00.000Z",
   "PriceAggregatorHistoryDays": 20,
   "RunTimeEnd": "2025-09-29T21:00:00.000Z",
-  "TraderSummaryPrintInterval": 100 
+  "TraderSummaryPrintInterval": 100,
+  "TraderAttemptsToFullyClose": 3
 }

@@ -51,7 +51,7 @@ namespace Limitless
                 Console.WriteLine("Retrieving bar history data...");
                 await PriceAggregate.LoadStoreBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.BacktestTimeStart - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), Config.BacktestTimeEnd, false);
                 MarketBehavior = new MarketBehaviorBacktest(Config);
             }
             else
@@ -60,7 +60,7 @@ namespace Limitless
                 PerceivedCurrentTime = DateTime.UtcNow;
                 await PriceAggregate.LoadStoreBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, PerceivedCurrentTime - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), PerceivedCurrentTime, false);
                 MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
             }
 
@@ -138,6 +138,7 @@ namespace Limitless
                         {
                             summarySb.AppendLine(trader.GetSummary());
                         }
+                        summarySb.AppendLine($"Total trader P&L: {TraderTotalPAndL()}");
                         Console.WriteLine(summarySb.ToString());
                         ActionTicksSinceSummary = 0;
                         summarySb.Clear();
@@ -164,6 +165,16 @@ namespace Limitless
                     trader.UpdateMostRecentQuote(mostRecentQuote);
                 }
             }
+        }
+
+        internal decimal TraderTotalPAndL()
+        {
+            decimal pAndL = 0.0M;
+            foreach (var trader in Traders)
+            {
+                pAndL += trader.CalculatePAndL();
+            }
+            return pAndL;
         }
     }
 }

@@ -44,6 +44,8 @@ namespace Limitless
         protected DateTime _previousActionTime;
         protected TimeSpan _timePerAction;
 
+        protected int _activeAttemptsToFullyClose = 0;
+
         public string Symbol { get; set; }
         public IQuote? SymbolOpeningQuote { get; set; }
         public TraderState State { get; protected set; } = TraderState.None;
@@ -136,11 +138,23 @@ namespace Limitless
         protected virtual async Task GoDormant()
         {
             await AttemptClose();
+            if (_quantityHeld == 0)
+            {
+                State = TraderState.Dormant;
+            }
         }
 
         protected virtual async Task WakeUpFromDormant()
         {
-            
+            if (_quantityHeld > 0)
+            {
+                State = TraderState.Holding;
+            }
+            else
+            {
+                State = TraderState.WaitingToBuy;
+            }
+            _activeAttemptsToFullyClose = 0;
         }
 
         public virtual void UpdateMostRecentQuote(IQuote quote)
@@ -209,6 +223,11 @@ namespace Limitless
                         OrderFilledConfirmation(State, updatedOrder);
                         _orderBeingConfirmed = null;
                         State = TraderState.Closed;
+                        _activeAttemptsToFullyClose = 0;
+                    }
+                    else
+                    {
+                        ++_activeAttemptsToFullyClose;
                     }
                 }
             }

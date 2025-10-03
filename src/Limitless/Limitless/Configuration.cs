@@ -29,5 +29,6 @@
         public int PriceAggregatorHistoryDays { get; set; }
         public DateTime RunTimeEnd { get; set; }
         public int TraderSummaryPrintInterval { get; set; }
+        public int TraderAttemptsToFullyClose { get; set; }
     }
 }
