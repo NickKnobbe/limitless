@@ -44,12 +44,10 @@ namespace Limitless
                 return null;
             }
 
-            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Buy, OrderType.Market, TimeInForce.Day);
-
             var marketOrder = new SimulatedOrder(
                 id: Guid.NewGuid(),
                 symbol: symbol,
-                quantity: quantity,
+                quantity: Math.Round(quantity),
                 filledAvgPrice: estimatedPrice,
                 orderSide: OrderSide.Buy,
                 orderType: OrderType.Market,
@@ -67,12 +65,10 @@ namespace Limitless
         {
             decimal price = quantity * estimatedPrice;
 
-            var marketOrderRequest = new NewOrderRequest(symbol, OrderQuantity.FromInt64((long)Math.Round(quantity)), OrderSide.Sell, OrderType.Market, TimeInForce.Day);
-
             var marketOrder = new SimulatedOrder(
                 id: Guid.NewGuid(),
                 symbol: symbol,
-                quantity: quantity,
+                quantity: Math.Round(quantity),
                 filledAvgPrice: estimatedPrice,
                 orderSide: OrderSide.Sell,
                 orderType: OrderType.Market,
@@ -104,6 +100,52 @@ namespace Limitless
             }
 
             return null;
+        }
+
+        public async Task<IOrder?> TakeProfitStopLoss(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice, decimal takeProfitLimitPrice, decimal stopLossPrice)
+        {
+            if (estimatedPrice <= 0.0M)
+            {
+                Console.WriteLine($"{timestamp} {symbol} Buy was cancelled. The most recent bid price was <= 0.0.");
+                return null;
+            }
+
+            if (estimatedPrice > launchSettings.MaximumSharePrice)
+            {
+                Console.WriteLine($"{timestamp} {symbol} Buy was cancelled. The most recent ask price {estimatedPrice} exceeds the maximum share price tolerance of {launchSettings.MaximumSharePrice}.");
+                return null;
+            }
+
+            decimal amountAffordable = launchSettings.MaximumPricePerBuy / estimatedPrice;
+            quantity = (int)Math.Floor(amountAffordable);
+
+            decimal totalPrice = quantity * estimatedPrice;
+
+            if (quantity < 1)
+            {
+                Console.WriteLine($"{timestamp} {symbol} Buy was cancelled. Can't buy with a quantity of {quantity}.");
+                return null;
+            }
+
+            if (totalPrice > launchSettings.MaximumPricePerBuy)
+            {
+                Console.WriteLine($"{timestamp} {symbol} Buy was cancelled. The most recent ask price {estimatedPrice} times the quantity {quantity} exceeds the maximum buy price tolerance of {launchSettings.MaximumPricePerBuy}.");
+                return null;
+            }
+
+            var marketOrder = new SimulatedOrder(
+                id: Guid.NewGuid(),
+                symbol: symbol,
+                quantity: Math.Round(quantity),
+                filledAvgPrice: estimatedPrice,
+                orderSide: OrderSide.Buy,
+                orderType: OrderType.Market,
+                timeInForce: TimeInForce.Day
+            );
+
+            orderIdToOrder[marketOrder.OrderId] = marketOrder;
+
+            return marketOrder;
         }
     }
 }

@@ -20,6 +20,7 @@ namespace Limitless
         internal List<Trader> Traders { get; private set; }
         internal int ActionTicksSinceStart { get; private set; }
         internal int ActionTicksSinceSummary { get; private set; }
+        internal DateTime TimeSincePreviousActionTick { get; set; }
 
         public TradeController(Configuration configuration, Secrets secret)
         {
@@ -50,7 +51,7 @@ namespace Limitless
                 Console.WriteLine("Retrieving bar history data...");
                 await PriceAggregate.LoadStoreBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreFakeQuotes(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 MarketBehavior = new MarketBehaviorBacktest(Config);
             }
             else
@@ -59,15 +60,24 @@ namespace Limitless
                 PerceivedCurrentTime = DateTime.UtcNow;
                 await PriceAggregate.LoadStoreBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreFakeQuotes(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
             }
+
+            //var testMarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
+
+            //var order = await testMarketBehavior.TakeProfitStopLoss("TSLA", 1.0M, DateTime.Now, 430.0M, 450.0M, 410.0M);
 
             Console.WriteLine("Data retrieval complete.");
 
             foreach (var symbol in Config.Symbols)
             {
-                Traders.Add(new SMACrossingTrader(this, Config, PriceAggregate, symbol, MarketBehavior));
+                var trader = new SMACrossingTrader(this, Config, PriceAggregate, symbol, MarketBehavior);
+                Traders.Add(trader);
+                trader.SymbolOpeningQuote = PriceAggregate.GetDayOpeningQuote(symbol, DateOnly.FromDateTime(PerceivedCurrentTime));
+                var mostRecentBar = PriceAggregate.GetLatestBarBefore(trader.Symbol, PerceivedCurrentTime);
+                var mostRecentQuote = PriceAggregate.GetLatestQuoteBefore(trader.Symbol, PerceivedCurrentTime);
+                trader.Activate(PerceivedCurrentTime, mostRecentQuote, mostRecentBar);
             }
 
             await ProcessLoop();
@@ -104,11 +114,13 @@ namespace Limitless
 
                 if (PerceivedCurrentTime - PreviousActionTime > TimePerAction)
                 {
-                    // todo : Make traders close if the position is stagnant
-                    UpdateTraderQuotes();
+                    if (!Config.SimulateLiveMarket)
+                    {
+                        // todo : Determine if history request quotes are recent enough to give a live run data as it progresses
+                        await PriceAggregate.LoadStoreQuotes(Config.Symbols, PreviousActionTime, PerceivedCurrentTime + new TimeSpan(0, 0, 5), true);
+                    }
 
-                    // todo : Update live quotes and determine if history request quotes are recent enough to 
-                    // give a live run data as it progresses
+                    UpdateTraderQuotes();
 
                     PreviousActionTime = PerceivedCurrentTime;
                     foreach (var trader in Traders)

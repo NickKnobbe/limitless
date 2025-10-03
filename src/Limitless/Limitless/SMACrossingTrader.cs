@@ -24,7 +24,14 @@ namespace Limitless
 
         bool BuyCondition()
         {
+            // Buy when the current price crosses above the X-day SMA
+            // and the stock's price is greater than its opening price.
             if (_mostRecentQuote == null || State != TraderState.WaitingToBuy) { return false; }
+
+            var openingQuote = _priceAggregator.GetDayOpeningQuote(Symbol, _currentTime);
+            var recentBAM = BidAskMid(_mostRecentQuote);
+
+            if (openingQuote == null || recentBAM < BidAskMid(openingQuote)) { return false; }
 
             var sma = _priceAggregator.GetSMA(Symbol, SMA_DAYS, _currentTime);
             if (_mostRecentQuote != null && _previousQuote != null && BidAskMid(_previousQuote) < sma && BidAskMid(_mostRecentQuote) > sma)
@@ -39,7 +46,7 @@ namespace Limitless
         {
             if (_mostRecentQuote == null || State != TraderState.Holding) { return false; }
 
-            var estimatePrice = BidAskMid(_mostRecentQuote);
+            var estimatePrice = GetEstimatedPrice(Symbol);
             if (estimatePrice < _activeStopLossPerSharePrice || estimatePrice > _activeTakeProfitPerSharePrice)
             {
                 return true;
@@ -53,7 +60,7 @@ namespace Limitless
             switch (State)
             {
                 case TraderState.None:
-                    State = TraderState.WaitingToBuy;
+                    State = TraderState.Dormant;
                     break;
                 case TraderState.WaitingToBuy:
                     {                  
@@ -62,8 +69,10 @@ namespace Limitless
                             var allowedQuantity = GetHighestQuantityBuyAllowed(Symbol, _launchSettings.MaximumPricePerBuy);
                             if (allowedQuantity > 0.01M)
                             {
-                                var estimatedCost = GetEstimatedPrice(Symbol) * allowedQuantity;
-                                var order = await _marketBehavior.Buy(Symbol, allowedQuantity, _currentTime, GetEstimatedPrice(Symbol));
+                                var estimatedPrice = GetEstimatedPrice(Symbol);
+                                var estimatedCost = estimatedPrice * allowedQuantity;
+
+                                var order = await Buy(Symbol, allowedQuantity, _currentTime, GetEstimatedPrice(Symbol));
 
                                 if (order != null)
                                 {
@@ -73,13 +82,13 @@ namespace Limitless
                                 }
                             }
                         }
+                        break;
                     }
-                    break;
                 case TraderState.Holding:
                     {
                         if (SellCondition())
                         {
-                            var order = await _marketBehavior.Sell(Symbol, _quantityHeld, _currentTime, GetEstimatedPrice(Symbol));
+                            var order = await Sell(Symbol, _quantityHeld, _currentTime, GetEstimatedPrice(Symbol));
 
                             if (order != null)
                             {
@@ -88,13 +97,13 @@ namespace Limitless
                                 // todo : Perform the confirmation during the same action tick
                             }
                         }
+                        break;
                     }
-                    break;
                 case TraderState.Cooldown:
                     {
                         CooldownCycleActions();
+                        break;
                     }
-                    break;
                 case TraderState.ConfirmingOrder:
                     {
                         if (_orderBeingConfirmed == null)
@@ -109,20 +118,48 @@ namespace Limitless
                                 await ConfirmOrder(State, order);
                             }
                         }
+                        break;
+                    }
+                case TraderState.Closing:
+                    {
+                        if (_orderBeingConfirmed == null)
+                        {
+                            State = TraderState.Closed;
+                        }
+                        else
+                        {
+                            var order = await _marketBehavior.GetOrder(_orderBeingConfirmed);
+                            if (order != null && order.OrderStatus == OrderStatus.Filled)
+                            {
+                                await ConfirmOrder(State, order);
+                            }
+                        }
                     }
                     break;
-                case TraderState.Closing:
-                    break;
                 case TraderState.Closed:
-                    break;
+                    {
+                        if (WakeUpFromDormantCondition())
+                        {
+                            await WakeUpFromDormant();
+                        }
+                        break;
+                    }
                 case TraderState.Retired:
                     break;
                 case TraderState.Error:
                     break;
                 case TraderState.WaitingForEvent:
                     break;
+                case TraderState.Dormant:
+                    {
+                        if (WakeUpFromDormantCondition())
+                        {
+                            await WakeUpFromDormant();
+                        }
+                        break;
+                    }
                 default:
-                    State = TraderState.WaitingToBuy;
+                    State = TraderState.Dormant;
                     break;
             }
         }

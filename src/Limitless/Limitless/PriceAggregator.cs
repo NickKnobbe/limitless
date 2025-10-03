@@ -1,6 +1,4 @@
 ﻿using Alpaca.Markets;
-using Alpaca.Markets.Extensions;
-using System.Collections.Generic;
 
 namespace Limitless
 {
@@ -104,7 +102,7 @@ namespace Limitless
         /// <summary>
         /// Loads quotes by loading bars and converting them to quotes. This is likely inaccurate.
         /// </summary>
-        public async Task<Dictionary<string, List<IQuote>>> LoadFakeQuotes(IEnumerable<string> symbols, DateTime start, DateTime end)
+        public async Task<Dictionary<string, List<IQuote>>> LoadQuotesFromBars(IEnumerable<string> symbols, DateTime start, DateTime end)
         {
             var bars = await LoadBars(symbols, start, end);
 
@@ -188,7 +186,7 @@ namespace Limitless
         /// <summary>
         /// Loads and stores quotes by loading bars and converting them to quotes. This is likely inaccurate.
         /// </summary>
-        public async Task LoadStoreFakeQuotes(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
+        public async Task LoadStoreQuotesFromBars(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
         {
             var startTime = start;
 
@@ -202,7 +200,7 @@ namespace Limitless
                 }
             }
 
-            var quotesBySymbol = await LoadFakeQuotes(symbols, startTime, end);
+            var quotesBySymbol = await LoadQuotesFromBars(symbols, startTime, end);
 
             foreach (var symbol in symbols)
             {
@@ -273,7 +271,7 @@ namespace Limitless
             return quotes[quotes.Count - 1];
         }
 
-        public IBar? GetLatestBarBefore(string symbol, DateTime time)
+        public IBar? GetLatestBarBefore(string symbol, DateTime dateTime)
         {
             _symbolToBars.TryGetValue(symbol, out var bars);
 
@@ -281,7 +279,7 @@ namespace Limitless
 
             for (int i = bars.Count - 1; i >= 0; --i)
             {
-                if (bars[i].TimeUtc < time)
+                if (bars[i].TimeUtc < dateTime)
                 {
                     return bars[i];
                 }
@@ -289,7 +287,7 @@ namespace Limitless
             return bars[0];
         }
 
-        public IQuote? GetLatestQuoteBefore(string symbol, DateTime time)
+        public IQuote? GetLatestQuoteBefore(string symbol, DateTime dateTime)
         {
             _symbolToQuotes.TryGetValue(symbol, out var quotes);
 
@@ -297,12 +295,24 @@ namespace Limitless
 
             for (int i = quotes.Count - 1; i >= 0; --i)
             {
-                if (quotes[i].TimestampUtc < time)
+                if (quotes[i].TimestampUtc < dateTime)
                 {
                     return quotes[i];
                 }
             }
             return quotes[0];
+        }
+
+        public IQuote? GetDayOpeningQuote(string symbol, DateOnly day)
+        {
+            var time = _launchSettings.RegularMarketHoursStart;
+            var openingDateTime = new DateTime(day, time) + new TimeSpan(0, 0, 1);
+            return GetLatestQuoteBefore(symbol, openingDateTime);
+        }
+
+        public IQuote? GetDayOpeningQuote(string symbol, DateTime dateTime)
+        {
+            return GetDayOpeningQuote(symbol, DateOnly.FromDateTime(dateTime));
         }
 
         public decimal GetSMA(string symbol, int smaDays, DateTime time)

@@ -13,17 +13,16 @@ namespace Limitless
         Closed = 6,
         Retired = 7,
         Error = 8,
-        WaitingForEvent = 9
+        WaitingForEvent = 9,
+        Dormant = 10
     }
 
     public class Trader
     {
         protected TradeController _owner;
         protected Configuration _launchSettings;
-        public string Symbol { get; set; }
         protected IMarketBehavior _marketBehavior;
 
-        public TraderState State { get; protected set; } = TraderState.None;
         protected IBar? _previousBar;
         protected IBar? _mostRecentBar;
         protected IQuote? _previousQuote;
@@ -34,10 +33,9 @@ namespace Limitless
         protected decimal _quantityHeld = 0.0M;
         protected int _cooldownCountdown = 0;
         protected IOrder? _orderBeingConfirmed;
-        protected decimal _estimatedHeldValue = 0.0M;
-        protected decimal _previousBuySharePrice = 0.0M;
-        protected decimal _activeStopLossPerSharePrice = 0.0M;
-        protected decimal _activeTakeProfitPerSharePrice = 0.0M;
+        protected decimal _averageHeldSharePriceEstimate = 0.0M;
+        protected decimal _activeTakeProfitPerSharePrice = decimal.MaxValue;
+        protected decimal _activeStopLossPerSharePrice = decimal.MinValue;
         protected decimal _estimatedPAndLDelta = 0.0M;
         protected decimal _allSoldAmounts = 0.0M;
         protected decimal _allBoughtAmounts = 0.0M;
@@ -45,6 +43,10 @@ namespace Limitless
         protected DateTime _currentTime;
         protected DateTime _previousActionTime;
         protected TimeSpan _timePerAction;
+
+        public string Symbol { get; set; }
+        public IQuote? SymbolOpeningQuote { get; set; }
+        public TraderState State { get; protected set; } = TraderState.None;
 
         public Trader(
             TradeController owner,
@@ -61,22 +63,26 @@ namespace Limitless
             _priceAggregator = priceAggregator;
         }
 
-        public virtual void Activate()
+        public virtual void Activate(DateTime percievedCurrentTime, IQuote? mostRecentQuote, IBar? mostRecentBar)
         {
             _cooldownCountdown = _launchSettings.TraderCooldownTickDuration;
+            _currentTime = percievedCurrentTime;
+            _previousBar = null;
+            _mostRecentBar = mostRecentBar;
+            _previousQuote = null;
+            _mostRecentQuote = mostRecentQuote;
+            _quoteOnPreviousTick = mostRecentQuote;
+            _quantityHeld = 0;
+            _orderBeingConfirmed = null;
+            _averageHeldSharePriceEstimate = 0.0M;
+
+            // todo : Retrieve the stock position
+
             if (State != TraderState.Retired)
             {
                 State = TraderState.WaitingToBuy;
             }
 
-            _previousBar = null;
-            _mostRecentBar = null;
-            _previousQuote = null;
-            _mostRecentQuote = null;
-            _quoteOnPreviousTick = null;
-            _quantityHeld = 0;
-            _orderBeingConfirmed = null;
-            _estimatedHeldValue = 0.0M;
         }
 
         public virtual async Task ProcessTick(DateTime currentTime)
@@ -106,7 +112,35 @@ namespace Limitless
 
         public virtual decimal CalculatePAndL()
         {
-            return _allSoldAmounts - _allBoughtAmounts + _estimatedHeldValue;
+            return _allSoldAmounts - _allBoughtAmounts + _averageHeldSharePriceEstimate * _quantityHeld;
+        }
+
+        protected virtual bool GoDormantCondition()
+        {
+            if (TimeOnly.FromDateTime(_currentTime) > _launchSettings.DailyActiveTimeEnd)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        protected virtual bool WakeUpFromDormantCondition()
+        {
+            if (TimeOnly.FromDateTime(_currentTime) > _launchSettings.DailyActiveTimeStart)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        protected virtual async Task GoDormant()
+        {
+            await AttemptClose();
+        }
+
+        protected virtual async Task WakeUpFromDormant()
+        {
+            
         }
 
         public virtual void UpdateMostRecentQuote(IQuote quote)
@@ -119,6 +153,10 @@ namespace Limitless
 
             _previousQuote = _mostRecentQuote;
             _mostRecentQuote = quote;
+            if (_quantityHeld > 0)
+            {
+                _averageHeldSharePriceEstimate = GetEstimatedPrice(Symbol);
+            }
         }
 
         public virtual void UpdateMostRecentBar(IBar bar)
@@ -153,7 +191,7 @@ namespace Limitless
                 IOrder? sellOrder = null;
                 if (_mostRecentQuote != null)
                 {
-                    sellOrder = await _marketBehavior.Sell(Symbol, _quantityHeld, _currentTime, _mostRecentQuote.BidPrice);
+                    sellOrder = await Sell(Symbol, _quantityHeld, _currentTime, _mostRecentQuote.BidPrice);
                 }
 
                 if (sellOrder == null)
@@ -170,9 +208,8 @@ namespace Limitless
                     {
                         OrderFilledConfirmation(State, updatedOrder);
                         _orderBeingConfirmed = null;
+                        State = TraderState.Closed;
                     }
-
-                    State = TraderState.Closed;
                 }
             }
         }
@@ -193,12 +230,27 @@ namespace Limitless
             if (updatedOrder.OrderSide == OrderSide.Buy)
             {
                 var priceBought = (decimal)updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity;
-                _previousBuySharePrice = (decimal)updatedOrder.AverageFillPrice;
+                decimal previousAverageSharePrice = _averageHeldSharePriceEstimate;
+                decimal previousQuantityHeld = _quantityHeld;
                 _quantityHeld += updatedOrder.FilledQuantity;
-                _estimatedHeldValue += priceBought;
+
+                var previousPortionQuantityHeld = 0.0M;
+                if (_quantityHeld != 0)
+                {
+                    previousPortionQuantityHeld = previousQuantityHeld / _quantityHeld;
+                }
+                var incomingPortionQuantityHeld = 1.0M;
+                if (_quantityHeld != 0)
+                {
+                    incomingPortionQuantityHeld -= previousPortionQuantityHeld;
+                }
+
+                // Weighted average
+                _averageHeldSharePriceEstimate = previousAverageSharePrice * previousPortionQuantityHeld + (decimal)updatedOrder.AverageFillPrice * incomingPortionQuantityHeld;
+
                 _allBoughtAmounts += priceBought;
-                _activeStopLossPerSharePrice = priceBought * _launchSettings.StopLossProportion;
-                _activeTakeProfitPerSharePrice = priceBought * _launchSettings.TakeProfitProportion;
+                _activeStopLossPerSharePrice = (decimal)updatedOrder.AverageFillPrice * _launchSettings.StopLossProportion;
+                _activeTakeProfitPerSharePrice = (decimal)updatedOrder.AverageFillPrice * _launchSettings.TakeProfitProportion;
                 Console.WriteLine($"{_currentTime} Bought {Symbol} @ {updatedOrder.AverageFillPrice} * {updatedOrder.FilledQuantity} = {priceBought}, P&L {CalculatePAndL()}");
                 State = TraderState.Holding;
             }
@@ -207,7 +259,7 @@ namespace Limitless
                 var priceSold = (decimal)updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity;
                 _allSoldAmounts += (decimal)(updatedOrder.AverageFillPrice * updatedOrder.FilledQuantity);
                 _quantityHeld = 0;
-                _estimatedHeldValue = 0.0M;
+                _averageHeldSharePriceEstimate = 0.0M;
                 Console.WriteLine($"{_currentTime} Sold {Symbol} @ {updatedOrder.AverageFillPrice} * {updatedOrder.FilledQuantity} = {priceSold}, P&L {CalculatePAndL()}");
                 PostSellActions();
             }
@@ -223,7 +275,7 @@ namespace Limitless
                 }
                 return _mostRecentBar.Close;
             }
-            return _mostRecentQuote.AskPrice;
+            return BidAskMid(_mostRecentQuote);
         }
 
         public virtual decimal GetHighestQuantityBuyAllowed(string symbol, decimal buyLimit)
@@ -238,9 +290,35 @@ namespace Limitless
             return Math.Floor(qty);
         }
 
+        protected virtual async Task<IOrder?> Buy(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
+        {
+            return await _marketBehavior.Buy(symbol, quantity, timestamp, estimatedPrice);
+        }
+
+        protected virtual async Task<IOrder?> Sell(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice)
+        {
+            return await _marketBehavior.Sell(symbol, quantity, timestamp, estimatedPrice);
+        }
+
+        protected virtual async Task<IOrder?> TakeProfitStopLoss(string symbol, decimal quantity, DateTime timestamp, decimal estimatedPrice, decimal takeProfitLimitPrice, decimal stopLossPrice)
+        {
+            return await _marketBehavior.TakeProfitStopLoss(symbol, quantity, timestamp, estimatedPrice, takeProfitLimitPrice, stopLossPrice);
+        }
+
+        public virtual async Task OnTakeProfitTriggered()
+        {
+
+        }
+
+        public virtual async Task OnStopLossTriggered()
+        {
+
+        }
+
         public string GetSummary()
         {
-            return $"{_currentTime} Trader for {Symbol} is holding {_quantityHeld} shares worth an estimated {_estimatedHeldValue}. Trader P&L: {CalculatePAndL()}";
+            var stateStr = State.ToString();
+            return $"{_currentTime} Trader for {Symbol} is holding {_quantityHeld} shares worth an estimated {_averageHeldSharePriceEstimate} * {_quantityHeld} = {_averageHeldSharePriceEstimate * _quantityHeld}. {Symbol} P&L: {CalculatePAndL()} {stateStr}";
         }
     }
 }
