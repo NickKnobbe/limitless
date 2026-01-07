@@ -1,5 +1,6 @@
 ﻿using Alpaca.Markets;
-using System.Diagnostics;
+using Limitless.Screening;
+using Limitless.Trading;
 using System.Text;
 
 namespace Limitless
@@ -13,14 +14,17 @@ namespace Limitless
         internal IAlpacaDataClient? DataClient { get; private set; }
         internal IMarketBehavior? MarketBehavior { get; private set; }
         internal PriceAggregator PriceAggregate { get; private set; }
+        internal Screener ActiveScreener { get; private set; }
         internal DateTime PerceivedCurrentTime { get; private set; }
         internal DateTime PreviousActionTime { get; private set; }
         internal TimeSpan TimePerAction { get; private set; }
+        internal DateTime BeginRunTime { get; private set; }
         internal DateTime EndRunTime { get; private set; }
         internal List<Trader> Traders { get; private set; }
         internal int ActionTicksSinceStart { get; private set; }
         internal int ActionTicksSinceSummary { get; private set; }
         internal DateTime TimeSincePreviousActionTick { get; set; }
+        internal List<string> ActiveSymbols { get; private set; }
 
         public TradeController(Configuration configuration, Secrets secret)
         {
@@ -44,25 +48,30 @@ namespace Limitless
             DataClient = CurrentEnvironment.GetAlpacaDataClient(secretKey);
             PriceAggregate = new PriceAggregator(Config, DataClient);
             TimePerAction = new TimeSpan(0, 0, 0, 0, Config.ActionTickMs);
+            ActiveScreener = new ActivityScreener();
+
+            ActiveSymbols = Config.Symbols;
 
             if (Config.SimulateLiveMarket)
             {
                 PerceivedCurrentTime = Config.BacktestTimeStart;
                 Console.WriteLine("Retrieving bar history data...");
-                await PriceAggregate.LoadStoreBars(Config.Symbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
+                await PriceAggregate.LoadStoreBars(ActiveSymbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, Config.BacktestTimeStart - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), Config.BacktestTimeEnd, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(ActiveSymbols, Config.BacktestTimeStart - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), Config.BacktestTimeEnd, false);
                 MarketBehavior = new MarketBehaviorBacktest(Config);
             }
             else
             {
                 Console.WriteLine("Retrieving bar history data...");
                 PerceivedCurrentTime = DateTime.UtcNow;
-                await PriceAggregate.LoadStoreBars(Config.Symbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
+                await PriceAggregate.LoadStoreBars(ActiveSymbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 Console.WriteLine("Retrieving quote history data...");
-                await PriceAggregate.LoadStoreQuotesFromBars(Config.Symbols, PerceivedCurrentTime - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), PerceivedCurrentTime, false);
+                await PriceAggregate.LoadStoreQuotesFromBars(ActiveSymbols, PerceivedCurrentTime - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), PerceivedCurrentTime, false);
                 MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
             }
+
+            BeginRunTime = PerceivedCurrentTime;
 
             //var testMarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
 
@@ -70,17 +79,36 @@ namespace Limitless
 
             Console.WriteLine("Data retrieval complete.");
 
-            foreach (var symbol in Config.Symbols)
+            RebuildActiveTraders();
+
+            await ProcessLoop();
+
+            Console.WriteLine(GetSessionSummary());
+        }
+
+        internal async Task Rescreen()
+        {
+            // We are operating under the assumption that a rescreen will require all traders to reinitialize.
+            var nextSymbols = await ActiveScreener.Rescreen(PerceivedCurrentTime);
+            ActiveSymbols = nextSymbols;
+            Traders = RebuildActiveTraders();
+        }
+
+        internal List<Trader> RebuildActiveTraders()
+        {
+            var nextTraders = new List<Trader>();
+
+            foreach (var symbol in ActiveSymbols)
             {
                 var trader = new SMACrossingTrader(this, Config, PriceAggregate, symbol, MarketBehavior);
-                Traders.Add(trader);
+                nextTraders.Add(trader);
                 trader.SymbolOpeningQuote = PriceAggregate.GetDayOpeningQuote(symbol, DateOnly.FromDateTime(PerceivedCurrentTime));
                 var mostRecentBar = PriceAggregate.GetLatestBarBefore(trader.Symbol, PerceivedCurrentTime);
                 var mostRecentQuote = PriceAggregate.GetLatestQuoteBefore(trader.Symbol, PerceivedCurrentTime);
                 trader.Activate(PerceivedCurrentTime, mostRecentQuote, mostRecentBar);
             }
 
-            await ProcessLoop();
+            return nextTraders;
         }
 
         internal async Task ProcessLoop()
@@ -105,6 +133,12 @@ namespace Limitless
                 else
                 {
                     PerceivedCurrentTime = DateTime.Now;
+                }
+
+                if (ActiveScreener != null && ActiveScreener.RescreenDue())
+                {
+                    // We are operating under the assumption that a rescreen will require all traders to reinitialize.
+                    await Rescreen();
                 }
 
                 foreach (var trader in Traders)
@@ -175,6 +209,38 @@ namespace Limitless
                 pAndL += trader.CalculatePAndL();
             }
             return pAndL;
+        }
+
+        internal List<Trader> GetTradersSortedPAndL()
+        {
+            var sorted = new List<Trader>();
+            return sorted;
+        }
+
+        internal string GetSessionSummary()
+        {
+            var summarySb = new StringBuilder();
+            var titleString = string.Empty;
+            summarySb.AppendLine($"Session Summary");
+
+            if (Config.SimulateLiveMarket)
+            {
+                summarySb.AppendLine("Backtesting session, simulated on past data");
+            }
+            else
+            {
+                summarySb.Append("Live trading session");
+            }
+
+            summarySb.AppendLine($"From {BeginRunTime} UTC to {EndRunTime} UTC");
+
+            foreach (var trader in Traders)
+            {
+                summarySb.AppendLine(trader.GetSummary());
+            }
+            summarySb.AppendLine($"Total trader P&L: {TraderTotalPAndL()}");
+
+            return summarySb.ToString();
         }
     }
 }

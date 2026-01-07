@@ -1,6 +1,6 @@
 ﻿using Alpaca.Markets;
 
-namespace Limitless
+namespace Limitless.Trading
 {
     public class InvertedHammerTrader : Trader
     {
@@ -23,11 +23,15 @@ namespace Limitless
         {
         }
 
-        public override async Task ActionTick(DateTime currentTime)
+        protected override bool BuyCondition()
         {
+            throw new NotImplementedException();
         }
 
-
+        protected override bool SellCondition()
+        {
+            throw new NotImplementedException();
+        }
 
         private bool IsBullishInvertedHammer(IBar bar)
         {

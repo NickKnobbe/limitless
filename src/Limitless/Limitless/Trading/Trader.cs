@@ -1,6 +1,6 @@
 ﻿using Alpaca.Markets;
 
-namespace Limitless 
+namespace Limitless.Trading 
 {
     public enum TraderState
     {
@@ -17,7 +17,7 @@ namespace Limitless
         Dormant = 10
     }
 
-    public class Trader
+    public abstract class Trader
     {
         protected TradeController _owner;
         protected Configuration _launchSettings;
@@ -95,7 +95,125 @@ namespace Limitless
         public virtual async Task ActionTick(DateTime currentTime)
         {
             _currentTime = currentTime;
+
+            if (GoDormantCondition() && State != TraderState.Dormant && State != TraderState.Closing && State != TraderState.Closed)
+            {
+                await GoDormant();
+                return;
+            }
+
+            switch (State)
+            {
+                case TraderState.None:
+                    State = TraderState.Dormant;
+                    break;
+                case TraderState.WaitingToBuy:
+                    {
+                        if (BuyCondition())
+                        {
+                            var allowedQuantity = GetHighestQuantityBuyAllowed(Symbol, _launchSettings.MaximumPricePerBuy);
+                            if (allowedQuantity > 0.01M)
+                            {
+                                var estimatedPrice = GetEstimatedPrice(Symbol);
+                                var estimatedCost = estimatedPrice * allowedQuantity;
+
+                                var order = await Buy(Symbol, allowedQuantity, _currentTime, GetEstimatedPrice(Symbol));
+
+                                if (order != null)
+                                {
+                                    _orderBeingConfirmed = order;
+                                    State = TraderState.ConfirmingOrder;
+                                    // todo : Perform the confirmation during the same action tick
+                                }
+                            }
+                        }
+                        break;
+                    }
+                case TraderState.Holding:
+                    {
+                        if (SellCondition())
+                        {
+                            var order = await Sell(Symbol, _quantityHeld, _currentTime, GetEstimatedPrice(Symbol));
+
+                            if (order != null)
+                            {
+                                _orderBeingConfirmed = order;
+                                State = TraderState.ConfirmingOrder;
+                                // todo : Perform the confirmation during the same action tick
+                            }
+                        }
+                        break;
+                    }
+                case TraderState.Cooldown:
+                    {
+                        CooldownCycleActions();
+                        break;
+                    }
+                case TraderState.ConfirmingOrder:
+                    {
+                        if (_orderBeingConfirmed == null)
+                        {
+                            // Problem problem
+                        }
+                        else
+                        {
+                            var order = await _marketBehavior.GetOrder(_orderBeingConfirmed);
+                            if (order != null && order.OrderStatus == OrderStatus.Filled)
+                            {
+                                await ConfirmOrder(State, order);
+                            }
+                        }
+                        break;
+                    }
+                case TraderState.Closing:
+                    {
+                        if (_orderBeingConfirmed == null || _activeAttemptsToFullyClose >= _launchSettings.TraderAttemptsToFullyClose)
+                        {
+                            State = TraderState.Closed;
+                            _activeAttemptsToFullyClose = 0;
+                        }
+                        else
+                        {
+                            var order = await _marketBehavior.GetOrder(_orderBeingConfirmed);
+                            if (order != null && order.OrderStatus == OrderStatus.Filled)
+                            {
+                                await ConfirmOrder(State, order);
+                            }
+                            ++_activeAttemptsToFullyClose;
+                        }
+                    }
+                    break;
+                case TraderState.Closed:
+                    {
+                        if (WakeUpFromDormantCondition())
+                        {
+                            await WakeUpFromDormant();
+                        }
+                        break;
+                    }
+                case TraderState.Retired:
+                    break;
+                case TraderState.Error:
+                    break;
+                case TraderState.WaitingForEvent:
+                    break;
+                case TraderState.Dormant:
+                    {
+                        if (WakeUpFromDormantCondition())
+                        {
+                            await WakeUpFromDormant();
+                        }
+                        break;
+                    }
+                default:
+                    State = TraderState.Dormant;
+                    break;
+            }
         }
+
+        protected abstract bool BuyCondition();
+
+        protected abstract bool SellCondition();
 
         public virtual void PostSellActions()
         {

@@ -9,6 +9,7 @@
         public decimal StopLossProportion { get; set; }
         public decimal TakeProfitProportion { get; set; }
         public decimal TrailingStopProportionBelow { get; set; }
+        public decimal RiskTolerancePerTrade { get; set; }
         public decimal MaximumPricePerBuy { get; set; }
         public decimal MaximumSharePrice { get; set; }
         public decimal MaximumBuyDuringRun { get; set; }
