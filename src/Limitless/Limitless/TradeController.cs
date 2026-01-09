@@ -89,7 +89,7 @@ namespace Limitless
         internal async Task Rescreen()
         {
             // We are operating under the assumption that a rescreen will require all traders to reinitialize.
-            var nextSymbols = await ActiveScreener.Rescreen(PerceivedCurrentTime);
+            var nextSymbols = await ActiveScreener.Screen(PerceivedCurrentTime);
             ActiveSymbols = nextSymbols;
             Traders = RebuildActiveTraders();
         }

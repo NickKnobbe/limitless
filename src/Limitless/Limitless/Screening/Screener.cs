@@ -17,8 +17,10 @@
             
         }
 
+        public abstract void AssignScreeningStocks(List<string> symbols);
+
         public abstract bool RescreenDue();
 
-        public abstract Task<List<string>> Rescreen(DateTime currentTime);
+        public abstract Task<List<string>> Screen(DateTime currentTime);
     }
 }

@@ -5,12 +5,17 @@
 
         public ActivityScreener() : base() { }
 
+        public override void AssignScreeningStocks(List<string> symbols)
+        {
+            throw new NotImplementedException();
+        }
+
         public override bool RescreenDue()
         {
             return false;
         }
 
-        public override async Task<List<string>> Rescreen(DateTime currentTime)
+        public override async Task<List<string>> Screen(DateTime currentTime)
         {
             return new List<string>();
         }
