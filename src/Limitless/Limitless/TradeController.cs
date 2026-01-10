@@ -56,7 +56,7 @@ namespace Limitless
             {
                 PerceivedCurrentTime = Config.BacktestTimeStart;
                 Console.WriteLine("Retrieving bar history data...");
-                await PriceAggregate.LoadStoreBars(ActiveSymbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
+                await PriceAggregate.LoadAndTrackBars(ActiveSymbols, Config.BacktestTimeStart, Config.BacktestTimeEnd, false);
                 Console.WriteLine("Retrieving quote history data...");
                 await PriceAggregate.LoadStoreQuotesFromBars(ActiveSymbols, Config.BacktestTimeStart - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), Config.BacktestTimeEnd, false);
                 MarketBehavior = new MarketBehaviorBacktest(Config);
@@ -65,7 +65,7 @@ namespace Limitless
             {
                 Console.WriteLine("Retrieving bar history data...");
                 PerceivedCurrentTime = DateTime.UtcNow;
-                await PriceAggregate.LoadStoreBars(ActiveSymbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
+                await PriceAggregate.LoadAndTrackBars(ActiveSymbols, Config.PriceAggregatorTimeStart, PerceivedCurrentTime, false);
                 Console.WriteLine("Retrieving quote history data...");
                 await PriceAggregate.LoadStoreQuotesFromBars(ActiveSymbols, PerceivedCurrentTime - new TimeSpan(Config.PriceAggregatorHistoryDays, 0, 0, 0), PerceivedCurrentTime, false);
                 MarketBehavior = new MarketBehaviorAlpaca(Config, TradingClient);
@@ -151,7 +151,7 @@ namespace Limitless
                     if (!Config.SimulateLiveMarket)
                     {
                         // todo : Determine if history request quotes are recent enough to give a live run data as it progresses
-                        await PriceAggregate.LoadStoreQuotes(Config.Symbols, PreviousActionTime, PerceivedCurrentTime + new TimeSpan(0, 0, 5), true);
+                        await PriceAggregate.LoadAndTrackQuotes(Config.Symbols, PreviousActionTime, PerceivedCurrentTime + new TimeSpan(0, 0, 5), true);
                     }
 
                     UpdateTraderQuotes();

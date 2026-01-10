@@ -108,7 +108,7 @@ namespace Limitless
             return fakeQuotesMap;
         }
 
-        public async Task LoadStoreBars(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
+        public async Task LoadAndTrackBars(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
         {
             var startTime = start;
 
@@ -137,7 +137,7 @@ namespace Limitless
             }
         }
 
-        public async Task LoadStoreQuotes(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
+        public async Task LoadAndTrackQuotes(IEnumerable<string> symbols, DateTime start, DateTime end, bool appendOnly)
         {
             var startTime = start;
 
