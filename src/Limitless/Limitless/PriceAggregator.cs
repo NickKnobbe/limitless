@@ -17,26 +17,24 @@ namespace Limitless
             dataClient = client;
         }
 
-        public async Task<Dictionary<string, List<IBar>>> LoadBars(IEnumerable<string> symbols, DateTime start, DateTime end)
+        async Task<Dictionary<string, List<TData>>?> PaginateRequest<TData, TRequest>(TRequest request, 
+            Func<TRequest, Task<IMultiPage<TData>>> requestFunction, Func<TRequest, string, Task<IMultiPage<TData>>> requestPaginatedFunction)
         {
-            var request = new HistoricalBarsRequest(symbols, start, end, BarTimeFrame.Minute);
-
-            var allBars = new List<IBar>();
+            var allItems = new List<TData>();
             string? nextPageToken = null;
 
-            var symbolToPages = new Dictionary<string, List<IBar>>();
-
+            var symbolToPages = new Dictionary<string, List<TData>>();
             do
             {
-                IMultiPage<IBar>? currentPage = null;
+                IMultiPage<TData>? currentPage = null;
 
                 if (nextPageToken == null)
                 {
-                    currentPage = await dataClient.GetHistoricalBarsAsync(request);
+                    currentPage = await requestFunction(request);
                 }
                 else
                 {
-                    currentPage = await dataClient.GetHistoricalBarsAsync(request.WithPageToken(nextPageToken));
+                    currentPage = await requestPaginatedFunction(request, nextPageToken);
                 }
 
                 // Add bars to result
@@ -44,7 +42,7 @@ namespace Limitless
                 {
                     if (!symbolToPages.ContainsKey(keyVal.Key))
                     {
-                        symbolToPages.Add(keyVal.Key, new List<IBar>());
+                        symbolToPages.Add(keyVal.Key, new List<TData>());
                     }
 
                     symbolToPages[keyVal.Key].AddRange(currentPage.Items[keyVal.Key]);
@@ -58,45 +56,30 @@ namespace Limitless
             return symbolToPages;
         }
 
-        public async Task<Dictionary<string, List<IQuote>>> LoadQuotes(IEnumerable<string> symbols, DateTime start, DateTime end)
+        public async Task<Dictionary<string, List<IBar>>?> LoadBars(IEnumerable<string> symbols, DateTime start, DateTime end)
+        {
+            var request = new HistoricalBarsRequest(symbols, start, end, BarTimeFrame.Minute);
+
+            var results = await PaginateRequest(
+                request,
+                async req => { return await dataClient.GetHistoricalBarsAsync(req); },
+                async (req, token) => { return await dataClient.GetHistoricalBarsAsync(req.WithPageToken(token)); }
+                );
+
+            return results;
+        }
+
+        public async Task<Dictionary<string, List<IQuote>>?> LoadQuotes(IEnumerable<string> symbols, DateTime start, DateTime end)
         {
             var request = new HistoricalQuotesRequest(symbols, start, end);
 
-            var allBars = new List<IBar>();
-            string? nextPageToken = null;
+            var results = await PaginateRequest(
+                request,
+                async req => { return await dataClient.GetHistoricalQuotesAsync(req); },
+                async (req, token) => { return await dataClient.GetHistoricalQuotesAsync(req.WithPageToken(token)); }
+                );
 
-            var symbolToQuotePages = new Dictionary<string, List<IQuote>>();
-
-            do
-            {
-                IMultiPage<IQuote>? currentPage = null;
-
-                if (nextPageToken == null)
-                {
-                    currentPage = await dataClient.GetHistoricalQuotesAsync(request);
-                }
-                else
-                {
-                    currentPage = await dataClient.GetHistoricalQuotesAsync(request.WithPageToken(nextPageToken));
-                }
-
-                // Add bars to result
-                foreach (var keyVal in currentPage.Items)
-                {
-                    if (!symbolToQuotePages.ContainsKey(keyVal.Key))
-                    {
-                        symbolToQuotePages.Add(keyVal.Key, new List<IQuote>());
-                    }
-
-                    symbolToQuotePages[keyVal.Key].AddRange(currentPage.Items[keyVal.Key]);
-                }
-
-                // Set next page token
-                nextPageToken = currentPage.NextPageToken;
-
-            } while (!string.IsNullOrEmpty(nextPageToken));
-
-            return symbolToQuotePages;
+            return results;
         }
 
         /// <summary>
